@@ -17,11 +17,20 @@ CLASSNAME_MAP = { "01_Hoofdtabel_Kerken": "Kerk",
                  "012_Denominatie": "Denominatie",
                  "013_Architect": "Architect",
                  "014_Bronnen": "Bron" }
-
+LOOKUP_LINK_MAP = { "01_Hoofdtabel_Kerken": 
+                     { "huidige_bestemming": "Lookup_Huidige_bestemming",
+                       "monumenten_status": "Lookup_Monumentenstatus",
+                       "opmerkingen_stijl": "Lookup_School",
+                       "stijl": "Lookup_Stijl",
+                       "vorm_type": "Lookup_Vorm_type" },
+                   "012_Denominatie":
+                     { "denominatie": "Lookup_Denominatie" },
+                   "014_Bronnen":
+                     { "type_bron": "Lookup_Brontype" } }
 
 logger = logging.getLogger(__name__)
 
-def convert(c, tables, ns):
+def convert(c, tables, ns, lookup_map):
     base = Namespace(ns)
     g = Graph()
 
@@ -31,22 +40,23 @@ def convert(c, tables, ns):
 
     if MAIN_TABLE in tables:
         logger.info("Converting {}".format(MAIN_TABLE))
-        references = convert_main_table(c, MAIN_TABLE, g, base)
+        references = convert_main_table(c, MAIN_TABLE, g, base, lookup_map)
 
     tables.remove(MAIN_TABLE)
     for table in tables:
         logger.info("Converting {}".format(table))
-        convert_secondary_table(c, table, g, base, references)
+        convert_secondary_table(c, table, g, base, lookup_map, references)
 
     return (g, GRAPH_LABEL_NL.replace(" ", "_"))
 
-def convert_main_table(c, tablename, g, base):
+def convert_main_table(c, tablename, g, base, lookup_map):
     classname = CLASSNAME_MAP[tablename]
 
     classnode = URIRef(base+classname)
     g.add((classnode, RDF.type, RDFS.Class))
     g.add((classnode, RDFS.label, Literal(classname, lang="nl")))
 
+    lookup = None if tablename not in LOOKUP_LINK_MAP else LOOKUP_LINK_MAP[tablename]
     references = dict()
     schema = schema_of_table(c, tablename)
     for rec in content_of_table(c, tablename):
@@ -73,11 +83,17 @@ def convert_main_table(c, tablename, g, base):
             value = int(rec[idx]) if datatype is XSD.integer else rec[idx]
             if value is None:
                 continue
+            if lookup is not None and type(value) is str and field.lower() in lookup:
+                lookup_table = lookup[field.lower()]
+                if lookup_table in lookup_map:
+                    if value.lower() in lookup_map[lookup_table]:
+                        g.add((node, URIRef(base+field.lower()), lookup_map[lookup_table][value.lower()]))
+                        continue
             g.add((node, URIRef(base+field.lower()), Literal(value, datatype=datatype)))
 
     return references
 
-def convert_secondary_table(c, tablename, g, base, references):
+def convert_secondary_table(c, tablename, g, base, lookup_map, references):
     classname = CLASSNAME_MAP[tablename]
     
     classnode = URIRef(base+classname)
@@ -85,6 +101,7 @@ def convert_secondary_table(c, tablename, g, base, references):
     g.add((classnode, RDFS.label, Literal(classname, lang="nl")))
     backlink = URIRef(base+classname.lower())
 
+    lookup = None if tablename not in LOOKUP_LINK_MAP else LOOKUP_LINK_MAP[tablename]
     schema = schema_of_table(c, tablename)
     for refidx, rec in enumerate(content_of_table(c, tablename), 1):
         node = URIRef(base + BNode().toPython())
@@ -109,5 +126,11 @@ def convert_secondary_table(c, tablename, g, base, references):
             value = int(rec[idx]) if datatype is XSD.integer else rec[idx]
             if value is None:
                 continue
+            if lookup is not None and type(value) is str and field.lower() in lookup:
+                lookup_table = lookup[field.lower()]
+                if lookup_table in lookup_map:
+                    if value.lower() in lookup_map[lookup_table]:
+                        g.add((node, URIRef(base+field.lower()), lookup_map[lookup_table][value.lower()]))
+                        continue
             g.add((node, URIRef(base+field.lower()), Literal(value, datatype=datatype)))
 

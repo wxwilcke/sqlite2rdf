@@ -25,16 +25,18 @@ def convert(conn, ns):
     tables = table_list(c)
     lookup_tables = {table for table in tables if table.startswith('Lookup_')}
 
+    lookup_map = {}
     for table in lookup_tables:
         logger.info("Converting {}".format(table))
-        graphs.append(skosify_table(c, table, ns))
+        graphs.append(skosify_table(c, table, ns, lookup_map))
     tables.difference_update(lookup_tables)
 
-    graphs.append(domain.convert(c, tables, ns))
+    graphs.append(domain.convert(c, tables, ns, lookup_map))
 
     return graphs
 
-def skosify_table(c, tablename, ns):
+def skosify_table(c, tablename, ns, lookup_map):
+    table_map = {}
     base = Namespace(ns + 'vocab/')
     g = Graph()
 
@@ -50,6 +52,10 @@ def skosify_table(c, tablename, ns):
         g.add((node, RDFS.label, Literal(rec[0].title(), datatype=XSD.string)))
         g.add((node, SKOS.inScheme, root))
         g.add((node, SKOS.prefLabel, Literal(rec[0].title(), datatype=XSD.string)))
+    
+        table_map[rec[0].lower()] = node
+
+    lookup_map[tablename] = table_map
 
     return (g, tablename)
         
